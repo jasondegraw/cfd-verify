@@ -10,7 +10,7 @@ To install CFDverify, copy this repository to a suitable location on your comput
 
 .. code-block:: console
 
-    $ git clone git@code-int.ornl.gov:14w/cfd-verify.git
+    $ git clone git@github.com:ORNL/cfd-verify.git
     $ cd cfd-verify
     $ source /path/to/your/venv/bin/activate
     $ pip install .
