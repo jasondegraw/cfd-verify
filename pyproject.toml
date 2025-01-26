@@ -11,6 +11,8 @@ authors = [
 description = "A package to conduct solution verification for CFD"
 readme = "README.rst"
 requires-python = ">=3.8"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "numpy",
     "pandas",
