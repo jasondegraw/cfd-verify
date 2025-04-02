@@ -134,7 +134,7 @@ class SinglePower(DiscretizationModel):
             return f_est + alpha*hs**p
         
         # Validate inputs
-        if len(p_limits) != 2 or (type(p_limits) != list and type(p_limits) != tuple):
+        if len(p_limits) != 2 or (type(p_limits) is not list and type(p_limits) is not tuple):
             raise ValueError("p_limits must be a list or tuple with two elements!")       
 
         # Normalize data for improved fitting
@@ -218,7 +218,7 @@ class AverageValue(DiscretizationModel):
         est : int | float | np.ndarray
             System response quantity estimate
         """
-        if type(h) == int or type(h) == float:
+        if type(h) is int or type(h) is float:
             est = self.parameters.loc[self.parameter_keys[0], key]
         else:
             est = (np.ones(np.shape(h))
@@ -281,7 +281,7 @@ class FinestValue(DiscretizationModel):
         est: int | float | np.ndarray
             System response quantity estimate
         """
-        if type(h) == int or type(h) == float:
+        if type(h) is int or type(h) is float:
             est = self.parameters.loc[self.parameter_keys[0], key]
         else:
             est = (np.ones(np.shape(h))
@@ -342,7 +342,7 @@ class MaximumValue(DiscretizationModel):
         est : int | float | np.ndarray
             System response quantity estimate
         """
-        if type(h) == int or type(h) == float:
+        if type(h) is int or type(h) is float:
             est = self.parameters.loc[self.parameter_keys[0], key]
         else:
             est = (np.ones(np.shape(h))
@@ -403,7 +403,7 @@ class MinimumValue(DiscretizationModel):
         est : int | float | np.ndarray
             System response quantity estimate
         """
-        if type(h) == int or type(h) == float:
+        if type(h) is int or type(h) is float:
             est = self.parameters.loc[self.parameter_keys[0], key]
         else:
             est = (np.ones(np.shape(h))
@@ -489,7 +489,7 @@ class ErrorModel(ABC):
         data : pd.Series | pd.DataFrame
             DataFrame of system response quantities of interest
         """
-        if key == None:
+        if key is None:
             data = self.parent.data
         else:
             data = self.parent.data[key]
@@ -520,12 +520,12 @@ class EstimatedError(ErrorModel):
             Estimated error of requested values
         """
         data = self.get_data(key)
-        if key == None:
+        if key is None:
             f_est = self.parent.f_est
         else:
             f_est = self.parent.f_est[key]
 
-        if index == None:
+        if index is None:
             err = data - f_est
         else:
             err = data.iloc[index] - f_est
@@ -565,7 +565,7 @@ class RelativeError(ErrorModel):
         """
         data = self.get_data(key)
 
-        if index == None:
+        if index is None:
             rel_err = data.diff(-1)
             # Define relative error for last mesh as same as previous mesh
             rel_err.iloc[-1] = rel_err.iloc[-2]
@@ -631,20 +631,30 @@ class GCI(UncertaintyModel):
 
         The GCI method was proposed by Patrick Roache as a way to uniformly
         report discretization uncertainty in computational fluid dynamics
-        simulation results in 1994. As implemented values are not normalized as
-        suggested by Roache. Note the equation
+        simulation results in 1994. By default values are not normalized as
+        suggested by Roache and the factor of safety is 1.25.
+        Roache provided the equation
 
         .. math::
-            GCI_1 = \\frac{Fs * |\\epsilon_{21}|}{r_{21}^p - 1}
+            GCI_1 = \\frac{Fs * |\\epsilon_{21}|}{r_{21}^p - 1},
 
-        is valid for all mesh pairs. However, it must be corrected if 
-        estimating the uncertainty for the coarse mesh (2) using
+        for estimating the uncertainty of the finer mesh for any two mesh pairs, 
+        and the equation 
 
         .. math::
-            GCI_2 = r_{21}^p * \\frac{Fs * |\\epsilon_{21}|}{r_{21}^p - 1}.
+            GCI_2 = r_{21}^p * \\frac{Fs * |\\epsilon_{21}|}{r_{21}^p - 1},
 
-        For this code, this correction is only required for the coarsest mesh
-        in a given dataset.
+        for the coarser mesh of any mesh pair. These equations use the absolute
+        relative error measure :math:`|\\epsilon_{21}|` corrected for the 
+        distance to the infinitely fine mesh; this is equivalent to the absolute
+        estimated error :math:`|\\epsilon_{\mathrm{est}}|` for exact fits. 
+        However, for regression fits of data they are not equivalent; therefore,
+        this code implements the GCI uncertainty measure as
+
+        .. math::
+            GCI = Fs * |\\epsilon_{\mathrm{est}}|,
+
+        so that it is valid for both exact and regression fits.
         
         Parameters
         ----------
@@ -667,25 +677,10 @@ class GCI(UncertaintyModel):
         P. J. Roache, "Perspective: A Method for Uniform Reporting of Grid
         Refinement Studies," Journal of Fluids Engineering, 116:3 (1994).
         """
-        r = self.parent.refinement_ratios
-        p = self.parent.order[key]
-        if index == None:
-            err = self.parent.abs_relative_error(key, index)[:-1]
-            gci = fs * err / (r**p - 1)
-            # Add last mesh estimate with coarse mesh estimator
-            last_err = self.parent.abs_relative_error(key, len(self.parent)-1)
-            last_gci = r[-1]**p * fs * last_err / (r[-1]**p - 1)
-            gci = pd.Series(np.append(gci, last_gci), name=key)
-        elif index == len(self.parent) - 1:
-            err = self.parent.abs_relative_error(key, index)
-            # Correct for coarse mesh estimator
-            gci = r[-1]**p * fs * err / (r[-1]**p - 1)
-        else:
-            err = self.parent.abs_relative_error(key, index)
-            gci = fs * err / (r[index]**p - 1)
+        gci = fs * self.parent.abs_estimated_error(key, index)
 
         if normalize:
-            if index == None:
+            if index is None:
                 gci = gci / self.parent.data[key]
             else:
                 gci = gci / self.parent.data[key][index]
@@ -734,7 +729,7 @@ class StudentsTDistribution(UncertaintyModel):
         u = v * std_dev / np.sqrt(n)
 
         # Return Series if no index selected
-        if index == None:
+        if index is None:
             u = pd.Series(np.ones(len(self.parent))*u, name=key)
 
         return u
@@ -763,7 +758,7 @@ class FactorOfSafety(UncertaintyModel):
         : np.floating | pd.Series
             Uncertainty of requested values using supplied factor of safety
         """
-        if index == None:
+        if index is None:
             error = self.parent.error(key)
         else:
             error = self.parent.error(key, index)
@@ -867,13 +862,13 @@ class DiscretizationError(ABC):
             if type(arg1) in [list, tuple]:
                 self.hs_key ="hs"
 
-            elif type(arg1) == np.ndarray:
+            elif type(arg1) is np.ndarray:
                 if len(np.squeeze(arg1).shape) != 1:
                     raise ValueError("Numpy array of discretization sizes must be 1 dimensional!")
                 self.hs_key ="hs"
 
-            elif type(arg1) == pd.Series:
-                if arg1.name == None:
+            elif type(arg1) is pd.Series:
+                if arg1.name is None:
                     self.hs_key = "hs"
                 else:
                     self.hs_key = str(arg1.name)
@@ -888,12 +883,12 @@ class DiscretizationError(ABC):
                 self.keys = ("System Response Quantity",)
                 self.data = pd.DataFrame({self.keys[0]: arg2})
 
-            elif type(arg2) == dict:
+            elif type(arg2) is dict:
                 self.keys = tuple(arg2.keys())
                 self.data = pd.DataFrame(arg2)
 
-            elif type(arg2) == pd.Series:
-                if arg2.name == None:
+            elif type(arg2) is pd.Series:
+                if arg2.name is None:
                     self.keys = ("System Response Quantity",)
                 else:
                     self.keys = (str(arg2.name),)
@@ -901,7 +896,7 @@ class DiscretizationError(ABC):
             else:
                 raise TypeError("Second argument must be a list, tuple, numpy.ndarray, pandas.Series, or dict when first argument is a list, tuple, numpy.ndarray, pandas.Series, or dict!")
 
-        elif type(arg1) == dict and len(arg1.keys()) == 1:
+        elif type(arg1) is dict and len(arg1.keys()) == 1:
             self.hs_key = list(arg1.keys())[0]
             self.hs = pd.Series(arg1[self.hs_key], name=self.hs_key)
 
@@ -910,12 +905,12 @@ class DiscretizationError(ABC):
                 self.keys = ("System Response Quantity",)
                 self.data = pd.DataFrame({self.keys[0]: arg2})
 
-            elif type(arg2) == dict:
+            elif type(arg2) is dict:
                 self.keys = tuple(arg2.keys())
                 self.data = pd.DataFrame(arg2)
 
-            elif type(arg2) == pd.Series:
-                if arg2.name == None:
+            elif type(arg2) is pd.Series:
+                if arg2.name is None:
                     self.keys = ("System Response Quantity",)
                 else:
                     self.keys = (str(arg2.name),)
@@ -923,10 +918,10 @@ class DiscretizationError(ABC):
             else:
                 raise TypeError("Second argument must be a list, tuple, numpy.ndarray, pandas.Series, or dict when first argument is singular dictionary!")
 
-        elif type(arg1) == dict:
-            if arg2 == None:
+        elif type(arg1) is dict:
+            if arg2 is None:
                 mesh_key = "hs"
-            elif type(arg2) == str:
+            elif type(arg2) is str:
                 mesh_key = arg2
             else:
                 raise TypeError("Second argument must be a string if first argument is a dict!")
@@ -940,10 +935,10 @@ class DiscretizationError(ABC):
             else:
                 raise ValueError(f"{mesh_key} key not found in dict for discretization levels!")
             
-        elif type(arg1) == pd.DataFrame:
-            if arg2 == None:
+        elif type(arg1) is pd.DataFrame:
+            if arg2 is None:
                 mesh_key = "hs"
-            elif type(arg2) == str:
+            elif type(arg2) is str:
                 mesh_key = arg2
             else:
                 raise TypeError("Second argument must be a string if first argument is a dict!")
@@ -992,7 +987,60 @@ class DiscretizationError(ABC):
         self.hs = self.hs.loc[idx].reset_index(drop=True)
         self.data = self.data.loc[idx].reset_index(drop=True)
 
-    # Data methods ############################################################   
+    # Data methods ############################################################
+    def estimated_error(self,
+                        key: str | None = None,
+                        index: int | None = None,
+    ) -> np.floating | pd.Series | pd.DataFrame:
+        """Compute estimated error for data
+
+        Parameters
+        ----------
+        key : str, optional
+            Key for system response quantity of interest, by default None
+        index : int, optional
+            Index for level of interest, by default None
+
+        Returns
+        -------
+        np.floating | pd.Series | pd.DataFrame
+            Estimated error of quantities of interest
+        """
+        if key is None:
+            data = self.data
+            f_est = self.f_est
+        else:
+            data = self.data[key]
+            f_est = self.f_est[key]
+
+        if index is None:
+            est_err = data - f_est
+        else:
+            est_err = data.iloc[index] - f_est
+
+        return est_err
+    
+    def abs_estimated_error(self,
+                       key: str=None,
+                       index: int=None,
+    ) -> np.floating | pd.Series | pd.DataFrame:
+        """Compute absolute estimated error for data
+
+        Parameters
+        ----------
+        key : str, optional
+            Key for system response quantity of interest, by default None
+        index : int, optional
+            Index for level of interest, by default None
+
+        Returns
+        -------
+        np.floating | pd.Series | pd.DataFrame
+            Absolute estimated error of quantities of interest
+        """
+        
+        return abs(self.estimated_error(key, index))
+    
     def relative_error(self,
                        key: str | None = None,
                        index: int | None = None,
@@ -1021,12 +1069,12 @@ class DiscretizationError(ABC):
         rel_err : np.floating | pd.Series | pd.DataFrame
             Relative error of quantities of interest
         """
-        if key == None:
+        if key is None:
             data = self.data
         else:
             data = self.data[key]
 
-        if index == None:
+        if index is None:
             rel_err = data.diff(-1)
             # Define relative error for last mesh as same as previous mesh
             rel_err.iloc[-1] = rel_err.iloc[-2]
@@ -1064,7 +1112,7 @@ class DiscretizationError(ABC):
         Returns
         -------
         rel_err : np.floating | pd.Series | pd.DataFrame
-            Relative error of quantities of interest
+            Absolute relative error of quantities of interest
         """
         return abs(self.relative_error(key, index))
 
@@ -1103,7 +1151,7 @@ class DiscretizationError(ABC):
         uncertainty : bool
             (Optional) Plot uncertainty bar
         """
-        if key == None:
+        if key is None:
             key = self.keys[0]
 
         fig, ax = plt.subplots()
@@ -1118,7 +1166,7 @@ class DiscretizationError(ABC):
         if error or uncertainty:
             fill_hs = np.array([0, self.hs.values[index]])
             err = abs(self.error(key, index)) * np.ones(fill_hs.shape)
-            val = self.model(key, self.hs[index]) * np.ones(fill_hs.shape)
+            val = self.data.loc[index, key] * np.ones(fill_hs.shape)
             err_low = val - err
             err_high = val + err
         if error:
@@ -1127,7 +1175,7 @@ class DiscretizationError(ABC):
         # Plot uncertainty
         if uncertainty:
             unc = self.uncertainty(key, index) * np.ones(fill_hs.shape)
-            val = self.model(key, self.hs[index]) * np.ones(fill_hs.shape)
+            val = self.data.loc[index, key] * np.ones(fill_hs.shape)
             unc_low = val - unc
             unc_high = val + unc
             ax.fill_between(fill_hs, err_high, unc_high, color="#ffe119",
@@ -1137,15 +1185,15 @@ class DiscretizationError(ABC):
             
         # Annotate and save
         ax.set_xlim(left=0)
-        if xlabel == None:
+        if xlabel is None:
             ax.set_xlabel("Discretization Size")
         else:
             ax.set_xlabel(xlabel)
-        if ylabel == None:
+        if ylabel is None:
             ax.set_ylabel("System Response Quantity")
         else:
             ax.set_ylabel(ylabel)
-        if title != None:
+        if title is not None:
             ax.set_title(title)
         ax.legend()
         fig.savefig(filename, bbox_inches="tight", dpi=300)
@@ -1160,7 +1208,7 @@ class DiscretizationError(ABC):
         key : str
             Key of system response quantity of interest
         """
-        if key == None:
+        if key is None:
             key = self.keys[0]
 
         print(f"Mesh Size \t {key}")

@@ -117,6 +117,26 @@ def test_abs_relative_error(custom):
                                   pd.DataFrame({"fs": [0.09, 0.63, 0.63],
                                                 "gs": [0.3, 0.9, 0.9]}))
     
+def test_estimated_error(custom):
+    """Test estimated_error method of DiscretizationError"""
+    assert custom.estimated_error("fs", 0) == approx(-0.03)
+    assert custom.estimated_error("fs", 1) == approx(-0.12)
+    assert custom.estimated_error("fs", 2) == approx(-0.75)
+    pd.testing.assert_frame_equal(custom.estimated_error(),
+                                  pd.DataFrame({"fs": [-0.03, -0.12, -0.75],
+                                                "gs": [0.3, 0.6, 1.5]}),
+                                  check_dtype=False)
+    pd.testing.assert_series_equal(custom.estimated_error("fs"),
+                                   pd.Series([-0.03, -0.12, -0.75], name="fs"),
+                                   check_dtype=False)
+
+def test_abs_estimated_error(custom):
+    """Test abs_estimated_error method of DiscretizationError"""
+    pd.testing.assert_frame_equal(custom.abs_estimated_error(),
+                                  pd.DataFrame({"fs": [0.03, 0.12, 0.75],
+                                                "gs": [0.3, 0.6, 1.5]}),
+                                  check_dtype=False)
+    
 # Test output methods
 def test_plot(custom):
     default_name = "DiscretizationError.png"
@@ -294,6 +314,12 @@ def test_gci(dataframe):
     assert model.uncertainty("gs", 2, normalize=True) == approx(test_data["gs"][2]/11.5)
     pd.testing.assert_series_equal(model.uncertainty("fs", normalize=True),
                                    test_data["fs"]/np.array([9.97, 9.88, 9.25]))
+    
+def test_gci_lse1(least_squared_error_1):
+    model = dis.CustomDiscretizationError(least_squared_error_1,
+                                          uncertainty=dis.GCI)
+    assert model.u("C_l", 0) > model.error("C_l", 0)
+    pd.testing.assert_series_equal(model.u("C_l"), 1.25*model.error("C_l"))
     
 def test_studentstdistribution(osc_dataframe):
     model = dis.CustomDiscretizationError(osc_dataframe,
