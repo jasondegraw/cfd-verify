@@ -5,7 +5,7 @@ project = "CFDverify"
 copyright = "2025, Oak Ridge National Laboratory"
 author = "Justin Weinmeister"
 version = "0.0"
-release = "0.0.1"
+release = "0.0.2"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
